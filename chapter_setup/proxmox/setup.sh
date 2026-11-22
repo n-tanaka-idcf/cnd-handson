@@ -14,10 +14,13 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+# 初回起動の直後は、cloud-init や unattended-upgrades が apt のロックを持っていることがある
+cloud-init status --wait >/dev/null || true
+APT_OPTS=(-q -o DPkg::Lock::Timeout=600)
 
 # chapter_setup のパッケージ。qemu-guest-agent は Proxmox から IP を見たりバックアップで fs-freeze したりするのに使う
-apt-get update -q
-apt-get install -y -q curl vim git unzip gnupg lsb-release ca-certificates dstat jq qemu-guest-agent
+apt-get update "${APT_OPTS[@]}"
+apt-get install -y "${APT_OPTS[@]}" curl vim git unzip gnupg lsb-release ca-certificates dstat jq qemu-guest-agent
 # udev から起動される unit なので enable はできない。起動だけする
 systemctl start qemu-guest-agent
 
@@ -27,8 +30,8 @@ curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/doc
 chmod a+r /etc/apt/keyrings/docker.asc
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
   > /etc/apt/sources.list.d/docker.list
-apt-get update -q
-apt-get install -y -q docker-ce docker-ce-cli containerd.io
+apt-get update "${APT_OPTS[@]}"
+apt-get install -y "${APT_OPTS[@]}" docker-ce docker-ce-cli containerd.io
 # chapter_cluster-create の install-tools.sh でも入れるが、先に入れておく（入れたあとログインし直す必要がある）
 usermod -aG docker "$USER_NAME"
 
@@ -41,8 +44,13 @@ EOF
 sysctl -q -p /etc/sysctl.d/90-kind-inotify.conf
 
 # VM の中から curl で叩く名前。80 番は Envoy Gateway、8080 番は Cilium の Ingress が待ち受ける
-for host in app.example.com app-cilium.example.com troubleshoot.example.com cnd-web.example.com; do
-  grep -qE "^127\.0\.0\.1[[:space:]]+$host\$" /etc/hosts || printf '127.0.0.1    %s\n' "$host" >> /etc/hosts
+# Proxmox の cloud-init は manage_etc_hosts: true なので、/etc/hosts は起動のたびにテンプレートから作り直される。
+# 今の /etc/hosts と、テンプレートの両方に書く
+for file in /etc/hosts /etc/cloud/templates/hosts.debian.tmpl; do
+  for host in app.example.com app-cilium.example.com troubleshoot.example.com cnd-web.example.com; do
+    awk -v h="$host" '$1 == "127.0.0.1" && $2 == h {found = 1} END {exit !found}' "$file" ||
+      printf '127.0.0.1    %s\n' "$host" >> "$file"
+  done
 done
 
 # ハンズオンのリポジトリ。すでにあれば触らない（作業中の変更を消さない）

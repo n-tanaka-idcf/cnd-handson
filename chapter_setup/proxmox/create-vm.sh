@@ -47,7 +47,6 @@ fi
 echo "$SHA256  $IMAGE_PATH" | sha256sum -c --quiet -
 
 # CPU は host にする。ネストした仮想化（KubeVirt の章）が使える
-CREATED=1
 qm create "$VMID" --name "$NAME" \
   --cores "$CORES" --cpu host --memory "$MEMORY" \
   --net0 virtio,bridge=vmbr0 \
@@ -55,6 +54,8 @@ qm create "$VMID" --name "$NAME" \
   --ide2 local-lvm:cloudinit --boot order=scsi0 \
   --serial0 socket --vga serial0 \
   --agent enabled=1 --onboot 0 --ostype l26
+# qm create が成功してから立てる。失敗したとき（VMID がほかで使われたときなど）に、別の VM を消さないようにする
+CREATED=1
 qm disk resize "$VMID" scsi0 "$DISK_SIZE"
 
 # cloud-init で渡すのはユーザー、公開鍵、IP だけ。パッケージは起動後に setup.sh で入れる
