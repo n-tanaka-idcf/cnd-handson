@@ -7,6 +7,9 @@
 下記の手順に従って、VMを作成してください。
 今回はAWS環境のVMで実施していますが、他の環境でも基本的に動作する想定です。
 
+> **Note**
+> Proxmox に VM を作る手順は [proxmox/README.md](./proxmox/README.md) にあります。
+
 ```bash
 # SSH で利用するキーペアの作成
 aws ec2 create-key-pair  \
